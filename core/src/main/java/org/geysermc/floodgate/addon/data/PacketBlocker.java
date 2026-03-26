@@ -29,6 +29,7 @@ import com.google.common.collect.Queues;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * In Floodgate the PacketBlocker is used to temporarily prevent packets from being decoded. A
@@ -45,6 +46,7 @@ import java.util.Queue;
  */
 public class PacketBlocker extends ChannelInboundHandlerAdapter {
     private final Queue<Object> packetQueue = Queues.newConcurrentLinkedQueue();
+    private final AtomicBoolean removed = new AtomicBoolean(false);
     private volatile boolean blockPackets;
 
     private ChannelHandlerContext ctx;
@@ -60,7 +62,30 @@ public class PacketBlocker extends ChannelInboundHandlerAdapter {
         while ((packet = packetQueue.poll()) != null) {
             ctx.fireChannelRead(packet);
         }
-        ctx.pipeline().remove(this);
+
+        ChannelHandlerContext localCtx = this.ctx;
+        if (localCtx == null) {
+            return;
+        }
+
+        if (!removed.compareAndSet(false, true)) {
+            return;
+        }
+
+        Runnable removeTask = () -> {
+            try {
+                if (localCtx.pipeline().context(this) != null) {
+                    localCtx.pipeline().remove(this);
+                }
+            } catch (Exception ignored) {
+            }
+        };
+
+        if (localCtx.channel().eventLoop().inEventLoop()) {
+            removeTask.run();
+        } else {
+            localCtx.channel().eventLoop().execute(removeTask);
+        }
     }
 
     public boolean enabled() {
