@@ -32,6 +32,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.AttributeKey;
 import java.net.InetSocketAddress;
 import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.RequiredArgsConstructor;
 import org.geysermc.floodgate.api.handshake.HandshakeData;
 import org.geysermc.floodgate.config.FloodgateConfig;
@@ -49,6 +50,7 @@ public abstract class CommonDataHandler extends ChannelInboundHandlerAdapter {
     protected final PacketBlocker blocker;
 
     protected final Queue<Object> packetQueue = Queues.newConcurrentLinkedQueue();
+    protected final AtomicBoolean removed = new AtomicBoolean(false);
     protected Object handshakePacket;
     protected ChannelHandlerContext ctx;
 
@@ -149,7 +151,29 @@ public abstract class CommonDataHandler extends ChannelInboundHandlerAdapter {
     }
 
     protected void removeSelf() {
-        ctx.pipeline().remove(this);
+        ChannelHandlerContext localCtx = this.ctx;
+        if (localCtx == null) {
+            return;
+        }
+
+        if (!removed.compareAndSet(false, true)) {
+            return;
+        }
+
+        Runnable removeTask = () -> {
+            try {
+                if (localCtx.pipeline().context(this) != null) {
+                    localCtx.pipeline().remove(this);
+                }
+            } catch (Exception ignored) {
+            }
+        };
+
+        if (localCtx.channel().eventLoop().inEventLoop()) {
+            removeTask.run();
+        } else {
+            localCtx.channel().eventLoop().execute(removeTask);
+        }
     }
 
     protected final void setKickMessage(String message) {

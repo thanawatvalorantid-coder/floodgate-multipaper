@@ -166,7 +166,7 @@ public final class SpigotDataHandler extends CommonDataHandler {
 
                 // I would've liked to close the channel for security reasons, but our big friend
                 // ProtocolSupport, who likes to break things, doesn't work otherwise
-                ctx.pipeline().remove(this);
+                removeSelf();
                 return true;
             }
 
@@ -175,7 +175,7 @@ public final class SpigotDataHandler extends CommonDataHandler {
                 setValue(packetListener, ClassNames.PAPER_DISABLE_USERNAME_VALIDATION, true);
                 if (proxyData) {
                     // the server will handle the rest if we have proxy data
-                    ctx.pipeline().remove(this);
+                    removeSelf();
                     return false;
                 }
             }
@@ -215,7 +215,7 @@ public final class SpigotDataHandler extends CommonDataHandler {
                 ClassNames.START_CLIENT_VERIFICATION.invoke(packetListener, gameProfile);
             }
 
-            ctx.pipeline().remove(this);
+            removeSelf();
             return true;
         }
         return false;
